@@ -1,7 +1,6 @@
 package http2
 
 import (
-	"context"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
@@ -17,9 +16,6 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
-
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
 
 	"github.com/imgk/shadow/pkg/gonet"
 	"github.com/imgk/shadow/pkg/pool"
@@ -47,16 +43,16 @@ func (d *NetDialer) DialTLS(network, addr string, cfg *tls.Config) (conn net.Con
 	return
 }
 
-// QUICDialer is ...
-type QUICDialer struct {
-	// Addr is ...
-	Addr string
-}
+// // QUICDialer is ...
+// type QUICDialer struct {
+// 	// Addr is ...
+// 	Addr string
+// }
 
-// Dial is ...
-func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
-}
+// // Dial is ...
+// func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+// 	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
+// }
 
 // Handler is ...
 type Handler struct {
@@ -160,7 +156,7 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 	sum := sha256.Sum224([]byte(password))
 	proxyAuth := fmt.Sprintf("Basic %v", base64.StdEncoding.EncodeToString([]byte(hex.EncodeToString(sum[:]))))
 
-	dialer := QUICDialer{Addr: server}
+	// dialer := QUICDialer{Addr: server}
 	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) (r *http.Request) {
 			r = &http.Request{
@@ -182,14 +178,14 @@ func NewQUICHandler(s string, timeout time.Duration) (*Handler, error) {
 		},
 		Cipher: cipher,
 		Client: http.Client{
-			Transport: &http3.RoundTripper{
-				Dial: dialer.Dial,
-				TLSClientConfig: &tls.Config{
-					ServerName:         host,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				},
-				QuicConfig: &quic.Config{KeepAlive: true},
-			},
+			// Transport: &http3.RoundTripper{
+			// 	Dial: dialer.Dial,
+			// 	TLSClientConfig: &tls.Config{
+			// 		ServerName:         host,
+			// 		ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			// 	},
+			// 	QuicConfig: &quic.Config{KeepAlive: true},
+			// },
 		},
 		proxyAuth: proxyAuth,
 		timeout:   timeout,

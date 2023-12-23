@@ -81,7 +81,7 @@ func (d *Device) DeviceType() string {
 
 // Write is ...
 func (d *Device) Write(b []byte) (int, error) {
-	return d.NativeTun.Write(b, 0)
+	return d.NativeTun.Write([][]byte{b}, 0)
 }
 
 // SetInterfaceAddress is ...

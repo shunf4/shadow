@@ -1,7 +1,6 @@
 package http2
 
 import (
-	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -13,8 +12,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
 	"golang.org/x/net/http2"
 
 	"github.com/imgk/shadow/pkg/gonet"
@@ -44,15 +41,15 @@ func (d *NetDialer) DialTLS(network, addr string, cfg *tls.Config) (conn net.Con
 }
 
 // QUICDialer is ...
-type QUICDialer struct {
-	// Addr is ...
-	Addr string
-}
+// type QUICDialer struct {
+// 	// Addr is ...
+// 	Addr string
+// }
 
-// Dial is ...
-func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
-}
+// // Dial is ...
+// func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+// 	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
+// }
 
 // Handler is ...
 type Handler struct {
@@ -118,7 +115,7 @@ func NewQUICHandler(server, path, password, domain string, timeout time.Duration
 		return fmt.Sprintf("Basic %v", string(buff[:]))
 	}(password)
 
-	dialer := QUICDialer{Addr: server}
+	// dialer := QUICDialer{Addr: server}
 	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) *http.Request {
 			r := &http.Request{
@@ -139,14 +136,14 @@ func NewQUICHandler(server, path, password, domain string, timeout time.Duration
 			return r
 		},
 		Client: http.Client{
-			Transport: &http3.RoundTripper{
-				Dial: dialer.Dial,
-				TLSClientConfig: &tls.Config{
-					ServerName:         domain,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				},
-				QuicConfig: &quic.Config{KeepAlive: true},
-			},
+			// Transport: &http3.RoundTripper{
+			// 	Dial: dialer.Dial,
+			// 	TLSClientConfig: &tls.Config{
+			// 		ServerName:         domain,
+			// 		ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			// 	},
+			// 	QuicConfig: &quic.Config{KeepAlive: true},
+			// },
 		},
 		proxyAuth: auth,
 		timeout:   timeout,

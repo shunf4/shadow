@@ -1,7 +1,6 @@
 package http2
 
 import (
-	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -12,9 +11,6 @@ import (
 	"time"
 
 	"golang.org/x/net/http2"
-
-	"github.com/lucas-clemente/quic-go"
-	"github.com/lucas-clemente/quic-go/http3"
 
 	"github.com/imgk/shadow/pkg/gonet"
 )
@@ -38,15 +34,15 @@ func (d *NetDialer) DialTLS(network, addr string, cfg *tls.Config) (conn net.Con
 }
 
 // QUICDialer is ...
-type QUICDialer struct {
-	// Addr is ...
-	Addr string
-}
+// type QUICDialer struct {
+// 	// Addr is ...
+// 	Addr string
+// }
 
 // Dial is ...
-func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
-	return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
-}
+// func (d *QUICDialer) Dial(ctx context.Context, network, addr string, tlsCfg *tls.Config, cfg *quic.Config) (quic.EarlyConnection, error) {
+// 	// return quic.DialAddrEarly(d.Addr, tlsCfg, cfg)
+// }
 
 // Hander is ...
 type Handler struct {
@@ -105,7 +101,7 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 		return handler, nil
 	}
 
-	dialer := QUICDialer{Addr: server}
+	// dialer := QUICDialer{Addr: server}
 	handler := &Handler{
 		NewRequest: func(addr string, body io.ReadCloser, auth string) *http.Request {
 			r := &http.Request{
@@ -128,14 +124,14 @@ func NewHandler(s string, timeout time.Duration) (*Handler, error) {
 			return r
 		},
 		Client: http.Client{
-			Transport: &http3.RoundTripper{
-				Dial: dialer.Dial,
-				TLSClientConfig: &tls.Config{
-					ServerName:         domain,
-					ClientSessionCache: tls.NewLRUClientSessionCache(32),
-				},
-				QuicConfig: &quic.Config{KeepAlive: true},
-			},
+			// Transport: &http3.RoundTripper{
+			// 	// Dial: dialer.Dial,
+			// 	TLSClientConfig: &tls.Config{
+			// 		ServerName:         domain,
+			// 		ClientSessionCache: tls.NewLRUClientSessionCache(32),
+			// 	},
+			// 	QuicConfig: &quic.Config{KeepAlive: true},
+			// },
 		},
 		proxyAuth: auth,
 	}

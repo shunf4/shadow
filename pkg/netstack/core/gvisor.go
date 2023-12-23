@@ -12,9 +12,10 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"gvisor.dev/gvisor/pkg/buffer"
 	"gvisor.dev/gvisor/pkg/tcpip"
 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
-	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv4"
 	"gvisor.dev/gvisor/pkg/tcpip/network/ipv6"
@@ -158,7 +159,7 @@ func (s *Stack) Start(device Device, handler Handler, logger Logger, mtu int) (e
 			log.Panic(fmt.Errorf("unable to ParseCIDR(%s): %w", s, err))
 		}
 
-		subnet, err := tcpip.NewSubnet(tcpip.Address(ipNet.IP), tcpip.AddressMask(ipNet.Mask))
+		subnet, err := tcpip.NewSubnet(tcpip.AddrFromSlice(ipNet.IP), tcpip.MaskFromBytes(ipNet.Mask))
 		if err != nil {
 			log.Panic(fmt.Errorf("unable to NewSubnet(%s): %w", ipNet, err))
 		}
@@ -234,9 +235,9 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 	ep, tcperr := r.CreateEndpoint(&wq)
 	if tcperr != nil {
 		s.Error("tcp %v:%v <---> %v:%v create endpoint error: %v",
-			net.IP(id.RemoteAddress),
+			net.IP(id.RemoteAddress.AsSlice()),
 			int(id.RemotePort),
-			net.IP(id.LocalAddress),
+			net.IP(id.LocalAddress.AsSlice()),
 			int(id.LocalPort),
 			tcperr,
 		)
@@ -260,15 +261,15 @@ func (s *Stack) HandleStream(r *tcp.ForwarderRequest) {
 		return nil
 	}(ep); err != nil {
 		s.Error("tcp %v:%v <---> %v:%v create endpoint error: %v",
-			net.IP(id.RemoteAddress),
+			net.IP(id.RemoteAddress.AsSlice()),
 			int(id.RemotePort),
-			net.IP(id.LocalAddress),
+			net.IP(id.LocalAddress.AsSlice()),
 			int(id.LocalPort),
 			err,
 		)
 	}
 
-	go s.Handler.Handle((*TCPConn)(unsafe.Pointer(gonet.NewTCPConn(&wq, ep))), &net.TCPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
+	go s.Handler.Handle((*TCPConn)(unsafe.Pointer(gonet.NewTCPConn(&wq, ep))), &net.TCPAddr{IP: net.IP(id.LocalAddress.AsSlice()), Port: int(id.LocalPort)})
 }
 
 // Get is to get *UDPConn
@@ -296,22 +297,22 @@ func (s *Stack) Del(k int) {
 // HandlePacket is to handle UDP connections
 func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuffer) bool {
 	// Ref: gVisor pkg/tcpip/transport/udp/endpoint.go HandlePacket
-	hdr := header.UDP(pkt.TransportHeader().View())
+	hdr := header.UDP(pkt.TransportHeader().View().AsSlice())
 	netHdr := pkt.Network()
 	lengthValid, csumValid := header.UDPValid(
 		hdr,
-		func() uint16 { return pkt.Data().AsRange().Checksum() },
+		func() uint16 { return pkt.Data().Checksum() },
 		uint16(pkt.Data().Size()),
 		pkt.NetworkProtocolNumber,
 		netHdr.SourceAddress(),
 		netHdr.DestinationAddress(),
-		pkt.RXTransportChecksumValidated)
+		pkt.RXChecksumValidated)
 	if !lengthValid {
 		// Malformed packet.
 		s.Error("udp %v:%v <---> %v:%v malformed packet",
-			net.IP(id.RemoteAddress),
+			net.IP(id.RemoteAddress.AsSlice()),
 			int(id.RemotePort),
-			net.IP(id.LocalAddress),
+			net.IP(id.LocalAddress.AsSlice()),
 			int(id.LocalPort),
 		)
 		s.Stack.Stats().UDP.MalformedPacketsReceived.Increment()
@@ -320,9 +321,9 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 
 	if !csumValid {
 		s.Error("udp %v:%v <---> %v:%v checksum error",
-			net.IP(id.RemoteAddress),
+			net.IP(id.RemoteAddress.AsSlice()),
 			int(id.RemotePort),
-			net.IP(id.LocalAddress),
+			net.IP(id.LocalAddress.AsSlice()),
 			int(id.LocalPort),
 		)
 		s.Stack.Stats().UDP.ChecksumErrors.Increment()
@@ -333,15 +334,15 @@ func (s *Stack) HandlePacket(id stack.TransportEndpointID, pkt *stack.PacketBuff
 
 	key := int(id.RemotePort)
 	if conn, ok := s.Get(key); ok {
-		vv := pkt.Data().ExtractVV()
-		conn.HandlePacket(vv.ToView(), &net.UDPAddr{IP: net.IP(id.LocalAddress), Port: int(id.LocalPort)})
+		vv := pkt.Data().ToBuffer()
+		conn.HandlePacket(vv.Flatten(), &net.UDPAddr{IP: net.IP(id.LocalAddress.AsSlice()), Port: int(id.LocalPort)})
 		return true
 	}
 
 	conn := NewUDPConn(key, id, pkt, s)
 	s.Add(key, conn)
-	vv := pkt.Data().ExtractVV()
-	conn.HandlePacket(vv.ToView(), conn.LocalAddr().(*net.UDPAddr))
+	vv := pkt.Data().ToBuffer()
+	conn.HandlePacket(vv.Flatten(), conn.LocalAddr().(*net.UDPAddr))
 
 	go s.Handler.HandlePacket(conn, conn.LocalAddr().(*net.UDPAddr))
 	return true
@@ -421,12 +422,12 @@ func (conn *UDPConn) Close() error {
 
 // LocalAddr is net.PacketConn.LocalAddr
 func (conn *UDPConn) LocalAddr() net.Addr {
-	return &net.UDPAddr{IP: net.IP(conn.routeInfo.id.LocalAddress), Port: int(conn.routeInfo.id.LocalPort)}
+	return &net.UDPAddr{IP: net.IP(conn.routeInfo.id.LocalAddress.AsSlice()), Port: int(conn.routeInfo.id.LocalPort)}
 }
 
 // RemoteAddr is net.PacketConn.RemoteAddr
 func (conn *UDPConn) RemoteAddr() net.Addr {
-	return &net.UDPAddr{IP: net.IP(conn.routeInfo.id.RemoteAddress), Port: int(conn.routeInfo.id.RemotePort)}
+	return &net.UDPAddr{IP: net.IP(conn.routeInfo.id.RemoteAddress.AsSlice()), Port: int(conn.routeInfo.id.RemotePort)}
 }
 
 // ReadTo is ...
@@ -446,8 +447,8 @@ func (conn *UDPConn) ReadTo(b []byte) (n int, addr net.Addr, err error) {
 
 // WriteFrom is ...
 func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
-	v := buffer.View(b)
-	if len(v) > header.UDPMaximumPacketSize {
+	v := buffer.NewViewWithData(b)
+	if v.AvailableSize() > header.UDPMaximumPacketSize {
 		return 0, errors.New((&tcpip.ErrMessageTooLong{}).String())
 	}
 
@@ -456,7 +457,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 		return 0, errors.New("core.UDPConn.WriteFrom error: addr type error")
 	}
 
-	route, tcperr := conn.stack.Stack.FindRoute(conn.routeInfo.nic, tcpip.Address(src.IP), conn.routeInfo.src, conn.routeInfo.pn, false)
+	route, tcperr := conn.stack.Stack.FindRoute(conn.routeInfo.nic, tcpip.AddrFrom4Slice(src.IP), conn.routeInfo.src, conn.routeInfo.pn, false)
 	if tcperr != nil {
 		return 0, errors.New(tcperr.String())
 	}
@@ -464,7 +465,7 @@ func (conn *UDPConn) WriteFrom(b []byte, addr net.Addr) (int, error) {
 
 	n, tcperr := (&udpPacketInfo{
 		route:         route,
-		data:          v,
+		data:          *v,
 		localPort:     uint16(src.Port),
 		remotePort:    conn.routeInfo.id.RemotePort,
 		ttl:           0,    /* ttl */
@@ -510,10 +511,10 @@ type udpPacketInfo struct {
 func (u *udpPacketInfo) send() (int, tcpip.Error) {
 	const ProtocolNumber = header.UDPProtocolNumber
 
-	vv := u.data.ToVectorisedView()
+	vv := buffer.MakeWithData(u.data.AsSlice())
 	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
 		ReserveHeaderBytes: header.UDPMinimumSize + int(u.route.MaxHeaderLength()),
-		Data:               vv,
+		Payload:            vv,
 	})
 	pkt.Owner = u.owner
 	defer pkt.DecRef()
@@ -536,9 +537,10 @@ func (u *udpPacketInfo) send() (int, tcpip.Error) {
 	if u.route.RequiresTXTransportChecksum() &&
 		(!u.noChecksum || u.route.NetProto() == header.IPv6ProtocolNumber) {
 		xsum := u.route.PseudoHeaderChecksum(ProtocolNumber, length)
-		for _, v := range vv.Views() {
-			xsum = header.Checksum(v, xsum)
-		}
+		xsum = checksum.Checksum(vv.Flatten(), xsum)
+		// for _, v := range vv.Views() {
+		// 	xsum = checksum.Checksum(v, xsum)
+		// }
 		udp.SetChecksum(^udp.CalculateChecksum(xsum))
 	}
 
@@ -556,5 +558,5 @@ func (u *udpPacketInfo) send() (int, tcpip.Error) {
 
 	// Track count of packets sent.
 	u.route.Stats().UDP.PacketsSent.Increment()
-	return len(u.data), nil
+	return u.data.AvailableSize(), nil
 }

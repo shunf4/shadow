@@ -9,7 +9,8 @@ import (
 	"sync"
 	"unsafe"
 
-	"gvisor.dev/gvisor/pkg/tcpip/buffer"
+	"gvisor.dev/gvisor/pkg/buffer"
+	"gvisor.dev/gvisor/pkg/tcpip/checksum"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 	"gvisor.dev/gvisor/pkg/tcpip/link/channel"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
@@ -85,7 +86,7 @@ func (e *Endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 
 			pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
 				ReserveHeaderBytes: 0,
-				Data:               buffer.View(buf).ToVectorisedView(),
+				Payload:            buffer.MakeWithData(buf),
 			})
 			switch header.IPVersion(buf) {
 			case header.IPv4Version:
@@ -103,10 +104,10 @@ func (e *Endpoint) WriteNotify() {
 	pkt := e.Endpoint.Read()
 
 	e.mu.Lock()
-	buf := append(e.buff[:0], pkt.NetworkHeader().View()...)
-	buf = append(buf, pkt.TransportHeader().View()...)
-	vv := pkt.Data().ExtractVV()
-	buf = append(buf, vv.ToView()...)
+	buf := append(e.buff[:0], pkt.NetworkHeader().View().AsSlice()...)
+	buf = append(buf, pkt.TransportHeader().View().AsSlice()...)
+	vv := pkt.Data().ToBuffer()
+	buf = append(buf, vv.Flatten()...)
 	e.Writer.Write(buf)
 	e.mu.Unlock()
 }
@@ -131,19 +132,19 @@ func (e *endpoint) Write(b []byte) (int, error) {
 		case header.UDPProtocolNumber:
 			hdr := header.UDP(pkt.Payload())
 			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), hdr.Length())
-			sum = header.Checksum(hdr.Payload(), sum)
+			sum = checksum.Checksum(hdr.Payload(), sum)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
 		case header.TCPProtocolNumber:
 			hdr := header.TCP(pkt.Payload())
 			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), pkt.PayloadLength())
-			sum = header.Checksum(hdr.Payload(), sum)
+			sum = checksum.Checksum(hdr.Payload(), sum)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
 		}
 		pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
 			ReserveHeaderBytes: 0,
-			Data:               buffer.View(buf).ToVectorisedView(),
+			Payload:            buffer.MakeWithData(buf),
 		})
 		e.Endpoint.InjectInbound(header.IPv4ProtocolNumber, pktBuffer)
 		pktBuffer.DecRef()
@@ -154,19 +155,19 @@ func (e *endpoint) Write(b []byte) (int, error) {
 		case header.UDPProtocolNumber:
 			hdr := header.UDP(pkt.Payload())
 			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), hdr.Length())
-			sum = header.Checksum(hdr.Payload(), sum)
+			sum = checksum.Checksum(hdr.Payload(), sum)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
 		case header.TCPProtocolNumber:
 			hdr := header.TCP(pkt.Payload())
 			sum := header.PseudoHeaderChecksum(ProtocolNumber, pkt.DestinationAddress(), pkt.SourceAddress(), pkt.PayloadLength())
-			sum = header.Checksum(hdr.Payload(), sum)
+			sum = checksum.Checksum(hdr.Payload(), sum)
 			hdr.SetChecksum(0)
 			hdr.SetChecksum(^hdr.CalculateChecksum(sum))
 		}
 		pktBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
 			ReserveHeaderBytes: 0,
-			Data:               buffer.View(buf).ToVectorisedView(),
+			Payload:            buffer.MakeWithData(buf),
 		})
 		e.Endpoint.InjectInbound(header.IPv6ProtocolNumber, pktBuffer)
 		pktBuffer.DecRef()
