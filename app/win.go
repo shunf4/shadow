@@ -94,7 +94,7 @@ func (app *App) Run() error {
 	if err != nil {
 		return fmt.Errorf("NewIPFilter error: %w", err)
 	}
-	ipFilter.IgnorePrivate()
+	// ipFilter.IgnorePrivate()
 	defer func() {
 		if err != nil {
 			ipFilter.Close()
