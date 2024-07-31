@@ -31,6 +31,7 @@ func init() {
 	if err := InstallDriver(); err != nil {
 		log.Panic(err)
 	}
+	fmt.Printf("Init driver done\n")
 }
 
 // InstallDriver is ...

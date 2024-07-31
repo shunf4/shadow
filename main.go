@@ -52,6 +52,8 @@ func main() {
 		return
 	}
 
+	time.Sleep(1200 * time.Millisecond)
+
 	w := io.Writer(nil)
 	if conf.Verbose {
 		w = os.Stdout
